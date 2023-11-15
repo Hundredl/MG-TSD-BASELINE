@@ -2,7 +2,7 @@ from data_provider.data_factory import data_provider
 from exp.exp_basic import Exp_Basic
 from models import Informer, Autoformer, Transformer, DLinear, Linear, NLinear, PatchTST
 from utils.tools import EarlyStopping, adjust_learning_rate, visual, test_params_flop
-from utils.metrics import metric
+from utils.metrics import metric, GLUONTS_METRICS
 
 import numpy as np
 import torch
@@ -16,6 +16,7 @@ import time
 import warnings
 import matplotlib.pyplot as plt
 import numpy as np
+import wandb
 
 warnings.filterwarnings('ignore')
 
@@ -56,6 +57,7 @@ class Exp_Main(Exp_Basic):
         self.model.eval()
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(vali_loader):
+                # print(f'vali batch {i}, batch_x shape: {batch_x.shape}, batch_y shape: {batch_y.shape}')
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float()
 
@@ -102,7 +104,7 @@ class Exp_Main(Exp_Basic):
         vali_data, vali_loader = self._get_data(flag='val')
         test_data, test_loader = self._get_data(flag='test')
 
-        path = os.path.join(self.args.checkpoints, setting)
+        path = os.path.join(self.args.checkpoints, f'{setting}_{self.args.time}')
         if not os.path.exists(path):
             os.makedirs(path)
 
@@ -122,7 +124,7 @@ class Exp_Main(Exp_Basic):
                                             pct_start = self.args.pct_start,
                                             epochs = self.args.train_epochs,
                                             max_lr = self.args.learning_rate)
-
+        total_steps = 0
         for epoch in range(self.args.train_epochs):
             iter_count = 0
             train_loss = []
@@ -130,6 +132,7 @@ class Exp_Main(Exp_Basic):
             self.model.train()
             epoch_time = time.time()
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
+                # print(f'train epoch {epoch}, batch {i},batch_x shape: {batch_x.shape}, batch_y shape: {batch_y.shape}，batch_x_mark shape: {batch_x_mark.shape}, batch_y_mark shape: {batch_y_mark.shape}')
                 iter_count += 1
                 model_optim.zero_grad()
                 batch_x = batch_x.float().to(self.device)
@@ -167,14 +170,13 @@ class Exp_Main(Exp_Basic):
                             
                         else:
                             outputs = self.model(batch_x, batch_x_mark, dec_inp, batch_y_mark, batch_y)
-                    # print(outputs.shape,batch_y.shape)
                     f_dim = -1 if self.args.features == 'MS' else 0
                     outputs = outputs[:, -self.args.pred_len:, f_dim:]
                     batch_y = batch_y[:, -self.args.pred_len:, f_dim:].to(self.device)
                     loss = criterion(outputs, batch_y)
                     train_loss.append(loss.item())
 
-                if (i + 1) % 100 == 0:
+                if (i + 1) % 10 == 0:
                     print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * ((self.args.train_epochs - epoch) * train_steps - i)
@@ -198,7 +200,13 @@ class Exp_Main(Exp_Basic):
             train_loss = np.average(train_loss)
             vali_loss = self.vali(vali_data, vali_loader, criterion)
             test_loss = self.vali(test_data, test_loader, criterion)
-
+            wandb.log({"lr": scheduler.get_last_lr()[0],'epoch': epoch}, step=total_steps)
+            wandb.log({"loss/train": train_loss, "loss/vali": vali_loss, "loss/test": test_loss}, step=total_steps)
+            if total_steps == len(train_loader) * self.args.train_epochs - 1:
+                self.test(setting, save_results=True, total_steps=total_steps)
+            else:
+                self.test(setting, save_results=False, total_steps=total_steps)
+            total_steps += 1
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f} Test Loss: {4:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss, test_loss))
             early_stopping(vali_loss, self.model, path)
@@ -211,31 +219,32 @@ class Exp_Main(Exp_Basic):
             else:
                 print('Updating learning rate to {}'.format(scheduler.get_last_lr()[0]))
 
-        best_model_path = path + '/' + 'checkpoint.pth'
+        # best_model_path = path + '/' + 'checkpoint.pth'
+        best_model_path = os.path.join(path, 'checkpoint.pth')
         self.model.load_state_dict(torch.load(best_model_path))
 
         return self.model
 
-    def test(self, setting, test=0):
+    def test(self, setting, test=0, save_results=False,total_steps=0):
         test_data, test_loader = self._get_data(flag='test')
         
         if test:
             print('loading model')
-            self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
+            self.model.load_state_dict(torch.load(os.path.join(self.args.checkpoints, f'{setting}_{self.args.time}', 'checkpoint.pth')))
 
         preds = []
         trues = []
         inputx = []
-        folder_path = './test_results/' + setting + '/'
+        folder_path = os.path.join(self.args.path_prefix, 'test_results', f'{setting}_{self.args.time}/')
         if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
+            os.makedirs(folder_path, exist_ok=True)
 
         self.model.eval()
         with torch.no_grad():
             for i, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
+                # print(f'test batch {i}, batch_x shape: {batch_x.shape}, batch_y shape: {batch_y.shape}')
                 batch_x = batch_x.float().to(self.device)
                 batch_y = batch_y.float().to(self.device)
-
                 batch_x_mark = batch_x_mark.float().to(self.device)
                 batch_y_mark = batch_y_mark.float().to(self.device)
 
@@ -271,11 +280,12 @@ class Exp_Main(Exp_Basic):
 
                 pred = outputs  # outputs.detach().cpu().numpy()  # .squeeze()
                 true = batch_y  # batch_y.detach().cpu().numpy()  # .squeeze()
-
+                
+                
                 preds.append(pred)
                 trues.append(true)
                 inputx.append(batch_x.detach().cpu().numpy())
-                if i % 20 == 0:
+                if i % 1 == 0:
                     input = batch_x.detach().cpu().numpy()
                     gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
                     pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
@@ -284,39 +294,88 @@ class Exp_Main(Exp_Basic):
         if self.args.test_flop:
             test_params_flop((batch_x.shape[1],batch_x.shape[2]))
             exit()
-        preds = np.array(preds)
-        trues = np.array(trues)
-        inputx = np.array(inputx)
 
-        preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
-        trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
-        inputx = inputx.reshape(-1, inputx.shape[-2], inputx.shape[-1])
+        # for i in preds:
+        #     print(i.shape)
+        # for i in trues:
+        #     print(i.shape)
+        # for i in inputx:
+        #     print(i.shape)
+        # preds = np.array(preds)
+        # trues = np.array(trues)
+        # inputx = np.array(inputx)
+
+
+        # preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
+        # trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
+        # inputx = inputx.reshape(-1, inputx.shape[-2], inputx.shape[-1])
+        # n个 preds 纵向堆叠
+        preds = np.concatenate(preds, axis=0)
+        trues = np.concatenate(trues, axis=0)
+        inputx = np.concatenate(inputx, axis=0)
+        print(f'preds shape: {preds.shape}, trues shape: {trues.shape}, inputx shape: {inputx.shape}')
 
         # result save
-        folder_path = './results/' + setting + '/'
+        folder_path = os.path.join(self.args.path_prefix, 'results', f'{setting}_{self.args.time}/')
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 
-        mae, mse, rmse, mape, mspe, rse, corr = metric(preds, trues)
-        print('mse:{}, mae:{}, rse:{}'.format(mse, mae, rse))
-        f = open("result.txt", 'a')
-        f.write(setting + "  \n")
-        f.write('mse:{}, mae:{}, rse:{}'.format(mse, mae, rse))
-        f.write('\n')
-        f.write('\n')
-        f.close()
+        nrmse_sum, nmae_sum, nrmse, nmae, mae, mse, rmse, mape, mspe, rse, corr = metric(preds, trues)
+        print(f'nrmse_sum:{nrmse_sum}, nmae_sum:{nmae_sum}, nrmse:{nrmse}, nmae:{nmae}, mae:{mae}, mse:{mse}, rmse:{rmse}, mape:{mape}, mspe:{mspe}, rse:{rse}, corr:{corr}')
+        wandb.log({"metric/nrmse_sum": nrmse_sum, "metric/nmae_sum": nmae_sum, "metric/nrmse": nrmse, "metric/nmae": nmae, "metric/mae": mae, "metric/mse": mse, "metric/rmse": rmse, "metric/mape": mape, "metric/mspe": mspe, "metric/rse": rse, "metric/corr": corr}, step=total_steps)
+        
+        CRPS, ND, NRMSE, CRPS_Sum, ND_Sum, NRMSE_Sum = GLUONTS_METRICS(preds, trues)
+        print(f'CRPS:{CRPS}, ND:{ND}, NRMSE:{NRMSE}, CRPS_Sum:{CRPS_Sum}, ND_Sum:{ND_Sum}, NRMSE_Sum:{NRMSE_Sum}')
+        wandb.log({"metric_glu/CRPS": CRPS, "metric_glu/ND": ND, "metric_glu/NRMSE": NRMSE, "metric_glu/CRPS_Sum": CRPS_Sum, "metric_glu/ND_Sum": ND_Sum, "metric_glu/NRMSE_Sum": NRMSE_Sum}, step=total_steps)
 
-        # np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe,rse, corr]))
-        np.save(folder_path + 'pred.npy', preds)
-        # np.save(folder_path + 'true.npy', trues)
-        # np.save(folder_path + 'x.npy', inputx)
+        preds_rs = []
+        trues_rs = []        
+        for pred in preds:
+            pred = test_data.inverse_transform(pred)
+            preds_rs.append(pred)
+        for true in trues:
+            true = test_data.inverse_transform(true)
+            trues_rs.append(true)
+        preds_rs = np.array(preds_rs)
+        trues_rs = np.array(trues_rs)
+        preds_rs = preds_rs.reshape(-1, preds_rs.shape[-2], preds_rs.shape[-1])
+        trues_rs = trues_rs.reshape(-1, trues_rs.shape[-2], trues_rs.shape[-1])
+        nrmse_sum, nmae_sum, nrmse, nmae, mae, mse, rmse, mape, mspe, rse, corr = metric(preds_rs, trues_rs)
+        print(f'nrmse_sum_rs:{nrmse_sum}, nmae_sum_rs:{nmae_sum}, nrmse_rs:{nrmse}, nmae_rs:{nmae}, mae_rs:{mae}, mse_rs:{mse}, rmse_rs:{rmse}, mape_rs:{mape}, mspe_rs:{mspe}, rse_rs:{rse}, corr_rs:{corr}')
+        wandb.log({"metric_rs/nrmse_sum": nrmse_sum, "metric_rs/nmae_sum": nmae_sum, "metric_rs/nrmse": nrmse, "metric_rs/nmae": nmae, "metric_rs/mae": mae, "metric_rs/mse": mse, "metric_rs/rmse": rmse, "metric_rs/mape": mape, "metric_rs/mspe": mspe, "metric_rs/rse": rse, "metric_rs/corr": corr}, step=total_steps)
+        
+        CRPS, ND, NRMSE, CRPS_Sum, ND_Sum, NRMSE_Sum = GLUONTS_METRICS(preds_rs, trues_rs)
+        print(f'CRPS_rs:{CRPS}, ND_rs:{ND}, NRMSE_rs:{NRMSE}, CRPS_Sum_rs:{CRPS_Sum}, ND_Sum_rs:{ND_Sum}, NRMSE_Sum_rs:{NRMSE_Sum}')
+        wandb.log({"metric_glu_rs/CRPS": CRPS, "metric_glu_rs/ND": ND, "metric_glu_rs/NRMSE": NRMSE, "metric_glu_rs/CRPS_Sum": CRPS_Sum, "metric_glu_rs/ND_Sum": ND_Sum, "metric_glu_rs/NRMSE_Sum": NRMSE_Sum}, step=total_steps)
+
+        if save_results:
+            
+            f = open(os.path.join(self.args.path_prefix, 'results', 'results.txt'), 'a')
+            f.write(setting + "  \n")
+            f.write('nrmse:{}, nmae:{}, mae:{}, mse:{}, rmse:{}, mape:{}, mspe:{}, rse:{}, corr:{}\n'.format(nrmse, nmae, mae, mse, rmse, mape, mspe, rse, corr))
+            f.write('\n')
+            f.write('\n')
+            f.close()
+            args_str = str(self.args).replace(',',' ')
+            # save matrics to csv
+            filename = os.path.join(self.args.path_prefix, 'results', f'metrics_{self.args.model}.csv')
+            if not os.path.exists(filename):
+                with open(filename, 'w') as file:
+                    file.write('dataset,epoch,nrmse,nmae,mae,mse,rmse,mape,mspe,setting,arg_str\n')
+            with open(filename, 'a') as file:
+                file.write(f'{self.args.dataset_name},{self.args.train_epochs},{nrmse:.4f},{nmae:.4f},{mae:.4f},{mse:.4f},{rmse:.4f},{mape:.4f},{mspe:.4f},{setting},{args_str}\n')
+            
+            # np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe,rse, corr]))
+            np.save(folder_path + 'pred.npy', preds)
+            # np.save(folder_path + 'true.npy', trues)
+            # np.save(folder_path + 'x.npy', inputx)
         return
 
     def predict(self, setting, load=False):
         pred_data, pred_loader = self._get_data(flag='pred')
 
         if load:
-            path = os.path.join(self.args.checkpoints, setting)
+            path = os.path.join(self.args.checkpoints, f'{setting}_{self.args.time}')
             best_model_path = path + '/' + 'checkpoint.pth'
             self.model.load_state_dict(torch.load(best_model_path))
 
@@ -358,7 +417,7 @@ class Exp_Main(Exp_Basic):
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
 
         # result save
-        folder_path = './results/' + setting + '/'
+        folder_path = os.path.join(self.args.path_prefix, 'results', f'{setting}_{self.args.time}/')
         if not os.path.exists(folder_path):
             os.makedirs(folder_path)
 

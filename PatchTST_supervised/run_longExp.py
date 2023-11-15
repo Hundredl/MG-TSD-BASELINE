@@ -4,10 +4,16 @@ import torch
 from exp.exp_main import Exp_Main
 import random
 import numpy as np
+import wandb
+import datetime
+wandb.login(key='94cc33acc0d4f4be3396e28131e30d1f057d3487')
 
 if __name__ == '__main__':
+    print('Start running...')
     parser = argparse.ArgumentParser(description='Autoformer & Transformer family for Time Series Forecasting')
-
+    parser.add_argument('--exp_label', type=str, default='LongForecasting', help='experiment label')
+    parser.add_argument('--blob_prefix', type=str, default='/home/v-wuyueying/workspace/blob/drive/')
+    parser.add_argument('--path_prefix', type=str, default='mgtsd/baseline/patchtst/')
     # random seed
     parser.add_argument('--random_seed', type=int, default=2021, help='random seed')
 
@@ -19,18 +25,19 @@ if __name__ == '__main__':
 
     # data loader
     parser.add_argument('--data', type=str, required=True, default='ETTm1', help='dataset type')
-    parser.add_argument('--root_path', type=str, default='./data/ETT/', help='root path of the data file')
+    parser.add_argument('--root_path', type=str, default='data/ETT/', help='root path of the data file')
     parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
     parser.add_argument('--features', type=str, default='M',
                         help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
     parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
     parser.add_argument('--freq', type=str, default='h',
                         help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
-    parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
-
+    parser.add_argument('--checkpoints', type=str, default='checkpoints/', help='location of model checkpoints')
+    parser.add_argument('--dataset_name', type=str, default='ETTm1', help='dataset name')
+    
     # forecasting task
     parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
-    parser.add_argument('--label_len', type=int, default=48, help='start token length')
+    parser.add_argument('--label_len', type=int, default=0, help='start token length')
     parser.add_argument('--pred_len', type=int, default=96, help='prediction sequence length')
 
 
@@ -77,7 +84,7 @@ if __name__ == '__main__':
     parser.add_argument('--itr', type=int, default=2, help='experiments times')
     parser.add_argument('--train_epochs', type=int, default=100, help='train epochs')
     parser.add_argument('--batch_size', type=int, default=128, help='batch size of train input data')
-    parser.add_argument('--patience', type=int, default=100, help='early stopping patience')
+    parser.add_argument('--patience', type=int, default=5, help='early stopping patience')
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
     parser.add_argument('--des', type=str, default='test', help='exp description')
     parser.add_argument('--loss', type=str, default='mse', help='loss function')
@@ -99,25 +106,46 @@ if __name__ == '__main__':
     random.seed(fix_seed)
     torch.manual_seed(fix_seed)
     np.random.seed(fix_seed)
+    torch.cuda.manual_seed(fix_seed)
+    torch.cuda.manual_seed_all(fix_seed)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
 
 
+
+    args.blob_prefix = os.environ['AMLT_BLOB_ROOT_DIR'] if 'AMLT_BLOB_ROOT_DIR' in os.environ else args.blob_prefix
+    args.path_prefix = os.path.join(args.blob_prefix, args.path_prefix)
     args.use_gpu = True if torch.cuda.is_available() and args.use_gpu else False
-
+    print('os.path.join(args.path_prefix, args.root_path): ', os.path.join(args.path_prefix, args.root_path))
+    print('os.path.join(args.path_prefix, args.checkpoints): ', os.path.join(args.path_prefix, args.checkpoints))
+    args.root_path = os.path.join(args.path_prefix, args.root_path)
+    args.checkpoints = os.path.join(args.path_prefix, args.checkpoints)
+    print('args.root_path: ', args.root_path)
+    print('args.checkpoints: ', args.checkpoints)
+    input_dim_dict = {
+        'elec':370,'sol':137,'cup':270,'traf':963,'taxi':1214,'wiki':2000}
+    args.input_dim = input_dim_dict[args.dataset_name]
+    args.enc_in = input_dim_dict[args.dataset_name]
     if args.use_gpu and args.use_multi_gpu:
-        args.dvices = args.devices.replace(' ', '')
+        args.devices = args.devices.replace(' ', '')
         device_ids = args.devices.split(',')
         args.device_ids = [int(id_) for id_ in device_ids]
         args.gpu = args.device_ids[0]
 
     print('Args in experiment:')
     print(args)
-
+    now = datetime.datetime.now(tz=datetime.timezone(datetime.timedelta(hours=8))).strftime('%Y-%m-%d_%H-%M-%S')
+    exp_name = f'patchtst_{now}'
+    args.time = now
+    wandb.init(project='PatchTST_Glounts', config=args, name=exp_name)
+    
     Exp = Exp_Main
 
     if args.is_training:
         for ii in range(args.itr):
             # setting record of experiments
-            setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+            setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+                args.dataset_name,
                 args.model_id,
                 args.model,
                 args.data,
@@ -139,17 +167,19 @@ if __name__ == '__main__':
             print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
             exp.train(setting)
 
-            print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-            exp.test(setting)
+            # print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+            # exp.test(setting,save_results=True, save_results_path='./results/', total_steps=None)
 
-            if args.do_predict:
-                print('>>>>>>>predicting : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-                exp.predict(setting, True)
+            # if args.do_predict:
+            #     print('>>>>>>>predicting : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+            #     exp.predict(setting, True)
 
             torch.cuda.empty_cache()
     else:
         ii = 0
-        setting = '{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(args.model_id,
+        setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
+                                                                                                    args.dataset_name,
+                                                                                                    args.model_id,
                                                                                                     args.model,
                                                                                                     args.data,
                                                                                                     args.features,

@@ -1,0 +1,40 @@
+description: glounts metrics
+
+target:
+  # service: sing
+  # name: msroctovc
+  # name: msrresrchvc
+  # name: ms-shared
+  service: aml
+  name: australia1GPUcl
+
+environment:
+  # image: nvidia/pytorch:22.07-py3
+  # registry: mcr.microsoft.com/mirror/nvcr
+  image: mcr.microsoft.com/mirror/nvcr/nvidia/pytorch:22.04-py3
+  registry: nvcr.io
+  setup:
+  - pip install -r ./requirements.txt
+
+code:
+  local_dir: ./
+
+storage:
+  data:
+    storage_account_name: msrresrchsa
+    container_name: v-yueyingwu
+    mount_dir: /mnt/storage
+    # local_dir: /tmp/blob_storage
+
+
+jobs:
+- name: yueying_patchtst_all_single_2
+  sku: G1
+  mpi: False
+  command:
+  - bash ./scripts/gluonts_patchtst/all_single_2.sh
+  submit_args:
+    env:
+      {
+        AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+      }
