@@ -16,7 +16,7 @@ for pred_len in 24
 do
   python -u run_longExp.py \
     --random_seed $random_seed \
-    --is_training 0 \
+    --is_training 1 \
     --root_path $root_path_name \
     --data_path $data_path_name \
     --model_id ${model_id_name}_${seq_len}_$pred_len \
@@ -35,5 +35,6 @@ do
     --ddpm_layers_II 5\
     --cond_ddpm_num_layers 5 \
     --interval 1000 \
-    --ddpm_dim_diff_steps 100 
+    --ddpm_dim_diff_steps 100 \
+    --learning_rate 0.001 
 done
