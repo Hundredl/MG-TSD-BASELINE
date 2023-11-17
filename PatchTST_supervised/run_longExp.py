@@ -7,7 +7,9 @@ import numpy as np
 import wandb
 import datetime
 wandb.login(key='94cc33acc0d4f4be3396e28131e30d1f057d3487')
-
+# 设置环境变量WANDB_MODE=dryrun
+# os.environ['WANDB_MODE'] = 'dryrun'
+# wandb offline
 if __name__ == '__main__':
     print('Start running...')
     parser = argparse.ArgumentParser(description='Autoformer & Transformer family for Time Series Forecasting')
@@ -97,7 +99,54 @@ if __name__ == '__main__':
     parser.add_argument('--gpu', type=int, default=0, help='gpu')
     parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
     parser.add_argument('--devices', type=str, default='0,1,2,3', help='device ids of multile gpus')
+    parser.add_argument('--device', type=str, default='cuda:0', help='device')
     parser.add_argument('--test_flop', action='store_true', default=False, help='See utils/tools for usage')
+
+    # Diffusion Models
+    parser.add_argument('--interval', type=int, default=100, help='number of diffusion steps')
+    parser.add_argument('--ot-ode', default=True, help='use OT-ODE model')
+    parser.add_argument("--beta-max", type=float, default=0.3, help="max diffusion for the diffusion model")
+    parser.add_argument("--t0", type=float, default=1e-4, help="sigma start time in network parametrization")
+    parser.add_argument("--T", type=float, default=1., help="sigma end time in network parametrization")
+    parser.add_argument('--model_channels', type=int, default=256)
+    parser.add_argument('--nfe', type=int, default=100)
+    parser.add_argument('--dim_LSTM', type=int, default=64)
+    parser.add_argument('--num_vars', type=int, default=7, help='encoder input size')
+    parser.add_argument('--pretrain_epochs', type=int, default=20, help='train epochs')
+
+
+    parser.add_argument('--diff_steps', type=int, default=100, help='number of diffusion steps')
+    parser.add_argument('--UNet_Type', type=str, default='CNN', help=['CNN'])
+    parser.add_argument('--D3PM_kernel_size', type=int, default=5)
+    parser.add_argument('--use_freq_enhance', type=int, default=0)
+    parser.add_argument('--type_sampler', type=str, default='dpm', help=["none", "dpm"])
+    parser.add_argument('--parameterization', type=str, default='x_start', help=["noise", "x_start"])
+
+    parser.add_argument('--ddpm_inp_embed', type=int, default=256)
+    parser.add_argument('--ddpm_dim_diff_steps', type=int, default=100)
+    parser.add_argument('--ddpm_channels_conv', type=int, default=256)
+    parser.add_argument('--ddpm_channels_fusion_I', type=int, default=256)
+    parser.add_argument('--ddpm_layers_inp', type=int, default=5)
+    parser.add_argument('--ddpm_layers_I', type=int, default=5)
+    parser.add_argument('--ddpm_layers_II', type=int, default=5)
+    parser.add_argument('--cond_ddpm_num_layers', type=int, default=5)
+    parser.add_argument('--cond_ddpm_channels_conv', type=int, default=64)
+
+    parser.add_argument('--ablation_study_case', type=str, default="none", help="none, mix_1, ar_1, mix_ar_0, w_pred_loss")
+    parser.add_argument('--weight_pred_loss', type=float, default=0.0)
+    parser.add_argument('--ablation_study_F_type', type=str, default="CNN", help="Linear, CNN")
+    parser.add_argument('--ablation_study_masking_type', type=str, default="none", help="none, hard, segment")
+    parser.add_argument('--ablation_study_masking_tau', type=float, default=0.9)
+
+    parser.add_argument('--vis_ar_part', type=int, default=0, help='status')
+    parser.add_argument('--use_window_normalization', type=bool, default=True)
+    parser.add_argument('--sample_times', type=int, default=10)
+    
+
+
+
+
+
 
     args = parser.parse_args()
 
@@ -126,6 +175,7 @@ if __name__ == '__main__':
         'elec':370,'sol':137,'cup':270,'traf':963,'taxi':1214,'wiki':2000}
     args.input_dim = input_dim_dict[args.dataset_name]
     args.enc_in = input_dim_dict[args.dataset_name]
+    args.num_vars = input_dim_dict[args.dataset_name]
     if args.use_gpu and args.use_multi_gpu:
         args.devices = args.devices.replace(' ', '')
         device_ids = args.devices.split(',')
@@ -137,13 +187,14 @@ if __name__ == '__main__':
     now = datetime.datetime.now(tz=datetime.timezone(datetime.timedelta(hours=8))).strftime('%Y-%m-%d_%H-%M-%S')
     exp_name = f'patchtst_{now}'
     args.time = now
-    wandb.init(project='PatchTST_Glounts', config=args, name=exp_name)
     
     Exp = Exp_Main
 
     if args.is_training:
+        wandb.init(project='PatchTST_Glounts', config=args, name=exp_name)
         for ii in range(args.itr):
             # setting record of experiments
+
             setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
                 args.dataset_name,
                 args.model_id,
@@ -164,6 +215,9 @@ if __name__ == '__main__':
                 args.des,ii)
 
             exp = Exp(args)  # set experiments
+            if args.model == 'TimeDiff':
+                print('>>>>>>>start pretraining : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
+                exp.pretrain(setting)
             print('>>>>>>>start training : {}>>>>>>>>>>>>>>>>>>>>>>>>>>'.format(setting))
             exp.train(setting)
 
@@ -178,26 +232,40 @@ if __name__ == '__main__':
     else:
         ii = 0
         setting = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_fc{}_eb{}_dt{}_{}_{}'.format(
-                                                                                                    args.dataset_name,
-                                                                                                    args.model_id,
-                                                                                                    args.model,
-                                                                                                    args.data,
-                                                                                                    args.features,
-                                                                                                    args.seq_len,
-                                                                                                    args.label_len,
-                                                                                                    args.pred_len,
-                                                                                                    args.d_model,
-                                                                                                    args.n_heads,
-                                                                                                    args.e_layers,
-                                                                                                    args.d_layers,
-                                                                                                    args.d_ff,
-                                                                                                    args.factor,
-                                                                                                    args.embed,
-                                                                                                    args.distil,
-                                                                                                    args.des, ii)
-
-        exp = Exp(args)  # set experiments
-        print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
-        exp.test(setting, test=1)
-        torch.cuda.empty_cache()
+                args.dataset_name,
+                args.model_id,
+                args.model,
+                args.data,
+                args.features,
+                args.seq_len,
+                args.label_len,
+                args.pred_len,
+                args.d_model,
+                args.n_heads,
+                args.e_layers,
+                args.d_layers,
+                args.d_ff,
+                args.factor,
+                args.embed,
+                args.distil,
+                args.des,ii)
+        times = {
+            'elec':['2023-11-17_02-37-23','2023-11-17_02-37-22','2023-11-17_02-37-21','2023-11-17_02-14-52','2023-11-17_02-13-28',
+                    '2023-11-16_12-49-21','2023-11-16_12-49-20','2023-11-16_18-57-04','2023-11-16_08-54-05','2023-11-16_08-53-54'],
+            'sol':['2023-11-17_02-37-24','2023-11-17_02-37-25','2023-11-17_02-37-23','2023-11-17_02-14-55','2023-11-17_02-11-32'],
+            'cup':['2023-11-17_02-38-57','2023-11-17_02-37-23','2023-11-17_02-37-23','2023-11-17_02-14-43','2023-11-17_02-12-43'],
+            'taxi':['2023-11-17_02-38-55','2023-11-17_02-37-25','2023-11-17_02-13-29','2023-11-17_02-13-21','2023-11-17_02-12-20'],
+            # 'traf':['2023-11-17_02-38-57','2023-11-17_02-37-24','2023-11-17_02-37-22','2023-11-17_02-13-44','2023-11-17_02-10-23'],
+            'traf':['2023-11-17_02-10-23'],
+            'wiki':['2023-11-17_02-37-26','2023-11-17_02-37-24','2023-11-17_02-37-25','2023-11-17_02-11-18','2023-11-17_02-06-05'],
+            
+        }
+        for cur_time in times[args.dataset_name]:
+            flod_name = f'{setting}_{cur_time}'
+            exp = Exp(args)
+            # flod_name = f'{setting}_2023-11-17_02-37-24'
+            # exp = Exp(args)  # set experiments
+            print('>>>>>>>testing : {}<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<'.format(setting))
+            exp.test(setting, test=1, save_results=True, total_steps=0, flod_name=flod_name, use_wandb=False)
+            torch.cuda.empty_cache()
         

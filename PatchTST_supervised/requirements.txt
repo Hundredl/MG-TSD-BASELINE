@@ -5,3 +5,4 @@ scikit-learn
 torch==1.11.0
 wandb
 gluonts==0.12.1
+einops

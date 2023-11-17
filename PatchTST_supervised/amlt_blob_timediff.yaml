@@ -1,0 +1,166 @@
+description: wn_l5_1
+
+target:
+  # service: sing
+  # name: msroctovc
+  # name: msrresrchvc
+  # name: ms-shared
+  service: aml
+  name: australia1GPUcl
+
+environment:
+  # image: nvidia/pytorch:22.07-py3
+  # registry: mcr.microsoft.com/mirror/nvcr
+  image: mcr.microsoft.com/mirror/nvcr/nvidia/pytorch:22.04-py3
+  registry: nvcr.io
+  setup:
+  - pip install -r ./requirements.txt
+
+code:
+  local_dir: ./
+
+storage:
+  data:
+    storage_account_name: msrresrchsa
+    container_name: v-yueyingwu
+    mount_dir: /mnt/storage
+    # local_dir: /tmp/blob_storage
+
+
+jobs:
+- name: yueying_timediff2_sol
+  sku: G1
+  mpi: False
+  command:
+  - bash ./scripts/gluonts_timediff2/sol.sh
+  submit_args:
+    env:
+      {
+        AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+      }
+# - name: yueying_timediff2_elec
+#   sku: G1
+#   mpi: False
+#   command:
+#   - bash ./scripts/gluonts_timediff2/elec.sh
+#   submit_args:
+#     env:
+#       {
+#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+#       }
+    
+# - name: yueying_timediff2_cup
+#   sku: G1
+#   mpi: False
+#   command:
+#   - bash ./scripts/gluonts_timediff2/cup.sh
+#   submit_args:
+#     env:
+#       {
+#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+#       }
+# - name: yueying_timediff2_taxi
+#   sku: G1
+#   mpi: False
+#   command:
+#   - bash ./scripts/gluonts_timediff2/taxi.sh
+#   submit_args:
+#     env:
+#       {
+#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+#       }
+
+# - name: yueying_timediff2_traf
+#   sku: G1
+#   mpi: False
+#   command:
+#   - bash ./scripts/gluonts_timediff2/traf.sh
+#   submit_args:
+#     env:
+#       {
+#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+#       }
+
+# - name: yueying_timediff2_wiki
+#   sku: G1
+#   mpi: False
+#   command:
+#   - bash ./scripts/gluonts_timediff2/wiki.sh
+#   submit_args:
+#     env:
+#       {
+#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+#       }
+
+
+
+
+
+
+
+
+# - name: yueying_timediff_elec
+#   sku: G1
+#   mpi: False
+#   command:
+#   - bash ./scripts/gluonts_timediff/elec.sh
+#   submit_args:
+#     env:
+#       {
+#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+#       }
+
+# - name: yueying_timediff_sol
+#   sku: G1
+#   mpi: False
+#   command:
+#   - bash ./scripts/gluonts_timediff/sol.sh
+#   submit_args:
+#     env:
+#       {
+#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+#       }
+
+# - name: yueying_timediff_cup
+#   sku: G1
+#   mpi: False
+#   command:
+#   - bash ./scripts/gluonts_timediff/cup.sh
+#   submit_args:
+#     env:
+#       {
+#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+#       }
+
+# - name: yueying_timediff_taxi
+#   sku: G1
+#   mpi: False
+#   command:
+#   - bash ./scripts/gluonts_timediff/taxi.sh
+#   submit_args:
+#     env:
+#       {
+#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+#       }
+
+# - name: yueying_timediff_traf
+#   sku: G1
+#   mpi: False
+#   command:
+#   - bash ./scripts/gluonts_timediff/traf.sh
+#   submit_args:
+#     env:
+#       {
+#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+#       }
+
+# - name: yueying_timediff_wiki
+#   sku: G1
+#   mpi: False
+#   command:
+#   - bash ./scripts/gluonts_timediff/wiki.sh
+#   submit_args:
+#     env:
+#       {
+#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+#       }

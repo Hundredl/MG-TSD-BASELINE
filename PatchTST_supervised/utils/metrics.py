@@ -67,7 +67,10 @@ def GLUONTS_METRICS(pred, true):
     pred_list = []
     for i in range(len(pred)):
         # extend the dimension of pred[i] from [pred_length, num_series] to [1, pred_length, num_series]
-        pred_cur = np.expand_dims(pred[i], axis=0)
+        if len(pred[i].shape) == 2:
+            pred_cur = np.expand_dims(pred[i], axis=0)
+        else:
+            pred_cur = pred[i]
         # get the start date of the current pred
         start_date = pd.Period('2012-01-01 00:00:00', freq='H') + pd.to_timedelta(i * len(pred[i]), unit='H')
         start_date = start_date.strftime('%Y-%m-%d %H:%M:%S')

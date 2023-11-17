@@ -39,16 +39,16 @@ jobs:
 #         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
 #       }
 
-- name: yueying_patchtst_cup
-  sku: G1
-  mpi: False
-  command:
-  - bash ./scripts/gluonts_patchtst/cup_single.sh
-  submit_args:
-    env:
-      {
-        AMLT_BLOB_ROOT_DIR: "/mnt/storage"
-      }
+# - name: yueying_patchtst_cup
+#   sku: G1
+#   mpi: False
+#   command:
+#   - bash ./scripts/gluonts_patchtst/cup_single.sh
+#   submit_args:
+#     env:
+#       {
+#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+#       }
 
 # - name: yueying_patchtst_wiki
 #   sku: G1
@@ -70,16 +70,16 @@ jobs:
 #       {
 #         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
 #       }
-# - name: yueying_patchtst_taxi
-#   sku: G1
-#   mpi: False
-#   command:
-#   - bash ./scripts/gluonts_patchtst/taxi_single.sh
-#   submit_args:
-#     env:
-#       {
-#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
-#       }
+- name: yueying_patchtst_taxi
+  sku: G1
+  mpi: False
+  command:
+  - bash ./scripts/gluonts_patchtst/taxi_single.sh
+  submit_args:
+    env:
+      {
+        AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+      }
 
 # - name: yueying_autoformer_cup
 #   sku: G1
@@ -92,13 +92,13 @@ jobs:
 #         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
 #       }
 
-# - name: yueying_autoformer_taxi
-#   sku: G1
-#   mpi: False
-#   command:
-#   - bash ./scripts/gluonts_auto/taxi.sh
-#   submit_args:
-#     env:
-#       {
-#         AMLT_BLOB_ROOT_DIR: "/mnt/storage"
-#       }
+- name: yueying_autoformer_taxi
+  sku: G1
+  mpi: False
+  command:
+  - bash ./scripts/gluonts_auto/taxi.sh
+  submit_args:
+    env:
+      {
+        AMLT_BLOB_ROOT_DIR: "/mnt/storage"
+      }
