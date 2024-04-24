@@ -7,6 +7,7 @@ target:
   # name: ms-shared
   service: aml
   name: australia1GPUcl
+  
 
 environment:
   # image: nvidia/pytorch:22.07-py3
