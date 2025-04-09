@@ -1,5 +1,4 @@
-# Baselines for timegrad
-
+# Baselines for MG-TSD
 AutoFormer, PatchTST, TimeDiff
 
 ```
